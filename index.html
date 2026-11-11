@@ -106,13 +106,10 @@ details summary::before{content:"+ "}details[open] summary::before{content:"– 
 <body>
 <div class="wrap">
 
-<section class="card gate" id="gate">
+<section class="card gate" id="gate" hidden>
   <h1>Edición · Proyecto R</h1>
-  <p class="mu" style="margin:0">Escribe el PIN del equipo una sola vez. Se guarda en este dispositivo.</p>
-  <form id="pinForm" class="row" autocomplete="off">
-    <input id="pin" type="password" inputmode="numeric" placeholder="PIN" aria-label="PIN" class="grow">
-    <button class="btn blue sm" type="submit" style="height:44px">Entrar</button>
-  </form>
+  <form id="pinForm" class="row" autocomplete="off" hidden><input id="pin" type="password" aria-label="PIN" class="grow"><button type="submit" hidden></button></form>
+  <div id="gateForm" hidden></div>
   <div class="msg err" id="pinMsg" hidden></div>
 </section>
 
@@ -235,7 +232,7 @@ details summary::before{content:"+ "}details[open] summary::before{content:"– 
     <div id="subHis" hidden style="display:flex;flex-direction:column;gap:12px">
       <section class="card"><div class="row between"><h2>Historial</h2><button class="btn ghost sm" id="csv" type="button">Bajar CSV</button></div><p class="mu" style="margin:0">Manuel responde aquí. Lo que escriba le sale a Ricardo al abrir la app.</p><div id="hist"></div></section>
       <section class="card"><h2>Registro de mejoras</h2><p class="mu" style="margin:0">Cada cambio de proceso, con fecha y desde qué video aplica.</p><div id="mejoras"></div><details><summary>Anotar un cambio</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px"><textarea id="mjTxt" rows="2" placeholder="Qué cambiamos y por qué"></textarea><div class="row"><select id="mjVid" style="height:38px;border-radius:10px;border:1px solid var(--line);background:var(--soft);padding:0 8px" class="grow"></select><button class="btn sm" id="mjSend" type="button">Guardar</button></div></div></details></section>
-      <button class="btn ghost" id="logout" style="height:40px;font-size:13px">Salir de este dispositivo</button>
+      <button class="btn ghost" id="logout" style="height:40px;font-size:13px">Recargar datos</button>
     </div>
   </div>
 </div>
@@ -492,9 +489,9 @@ $("csv").onclick=()=>{const cols=["fecha","video","prog","adv","h","meta","f1_pc
 function renderAll(){if(ST==="A")renderA();if(!$("paneP").hidden)renderProject()}
 // ---------- boot ----------
 $("pinForm").addEventListener("submit",async e=>{e.preventDefault();PIN=$("pin").value.trim();if(!PIN)return;$("pinMsg").hidden=true;try{await enter();store.set("pr_pin",PIN)}catch(err){$("pinMsg").hidden=false;$("pinMsg").textContent=err.pin?"Ese PIN no es correcto.":"No se pudo conectar. Revisa el internet e intenta otra vez."}});
-$("logout").onclick=()=>{store.del("pr_pin");location.reload()};
+$("logout").onclick=()=>{location.reload()};
 async function enter(){await load();$("gate").hidden=true;$("app").hidden=false;renderA();decideState();tab(store.get("pr_tab")==="P"?"P":"C")}
-(async()=>{if(PIN){try{await enter()}catch(e){if(e.pin)store.del("pr_pin");$("pinMsg").hidden=false;$("pinMsg").textContent=e.pin?"El PIN guardado ya no sirve. Escríbelo otra vez.":"No se pudo conectar. Revisa el internet."}}})();
+(async()=>{PIN=PIN||"abierto";try{await enter()}catch(e){$("gate").hidden=false;$("gateForm").hidden=true;$("pinMsg").hidden=false;$("pinMsg").textContent="No se pudo conectar. Revisa el internet y recarga la página."}})();
 </script>
 </body>
 </html>
