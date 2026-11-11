@@ -24,6 +24,7 @@ button{cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .dark{background:var(--ink);color:#fff;border:0}
 .dark .mu{color:#c9c9c3}.dark .k{color:#9a9ba3}
+.dark .msg{background:#2b2c33;color:#fff}.dark .msg.ok b{color:#5fd19b}.dark .msg.warn b{color:#f2b45a}.dark .msg.bad b{color:#f08374}
 .mu{color:var(--muted);font-size:13px}
 .k{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .row{display:flex;gap:8px;align-items:center}.between{justify-content:space-between}.wrapr{flex-wrap:wrap}
@@ -127,6 +128,7 @@ details summary::before{content:"+ "}details[open] summary::before{content:"– 
         <div class="k">Tu meta para esta sesión</div>
         <div class="row between"><div class="grow"><div class="big" id="aMetaPct">—</div><div class="mu" id="aMetaTxt"></div></div></div>
         <div class="stack" id="aMetaBar"></div>
+        <div id="aTrack"></div>
       </section>
       <section class="card">
         <div class="row between"><h2>Hoy trabajas en</h2><span class="chip na" id="aVidChip"></span></div>
@@ -194,6 +196,7 @@ details summary::before{content:"+ "}details[open] summary::before{content:"– 
         <div class="row" style="align-items:baseline"><div class="big" id="dSugPct"></div><div class="mu grow" id="dSugTxt"></div></div>
         <div class="stack" id="dBar"></div>
         <div class="steps" id="dSteps"></div>
+        <div id="dTrack"></div>
         <div class="tiles" id="dTiles"></div>
       </section>
       <section class="card">
@@ -326,7 +329,8 @@ function currentVideo(){const t=todayPR();return M.vids.find(v=>v.n>0&&v.prog<10
 function suggest(v,prog,fases,forDay){
   const ritmo=M.ritmo||6, sesH=M.sesH||3;
   const exp=expectedPct(v,forDay)??0;
-  let target=exp; const keep=prog+Math.min(25,ritmo*sesH);
+  const keep=prog+Math.min(25,ritmo*sesH);
+  let target=Math.min(exp,prog+ritmo*(sesH+1)); // si va atrás, recupera en pasos que caben en una sesión larga, no todo de golpe
   if(prog>=exp-0.5)target=Math.min(100,Math.max(exp,keep)); // ya va al día: mantener ritmo sin inflar la meta
   target=Math.max(target,prog+5); target=Math.min(100,Math.round(target));
   const t5=r5(target); const pts=Math.max(0,t5-prog);
@@ -339,6 +343,18 @@ function suggest(v,prog,fases,forDay){
   const hours=pts/ritmo;
   return{target:t5,exp:Math.round(exp),pts:Math.round(pts),hours,ritmo,steps,nextF,ahead:prog>=exp-0.5};
 }
+function track(V,prog,fromDay){const t=fromDay||todayPR();const ritmo=M.ritmo||6,sesH=M.sesH||3;const exp=expectedPct(V,t)??0;const deficit=Math.round(exp-prog);
+  const rest=Math.max(0,100-prog);const left=Math.max(1,workDays(t,V.entrega).length);const usual=Math.max(5,Math.round(ritmo*sesH));
+  const perDay=Math.ceil(rest/left);const extra=Math.max(0,perDay-usual);
+  let fin=t,need=Math.ceil(rest/usual);if(rest>0){let k=t;while(need>0){if(isWork(k))need--;if(need>0)k=addDays(k,1)}fin=k}
+  let txt="",tipo="ok";
+  if(rest<=0){txt="";}
+  else if(deficit<=5){tipo="ok";txt=`Vas al día. Con ${perDay} puntos por sesión hasta el ${short(V.entrega)} llegas sin apretar (normalmente haces ${usual}).`;}
+  else if(extra<=0){tipo="warn";txt=`Vas ${deficit} puntos detrás del plan, pero a tu ritmo normal llegas: necesitas ${perDay} puntos por sesión hasta el ${short(V.entrega)} y normalmente haces ${usual}. Sostén eso y te pones al día.`;}
+  else if(extra<=Math.max(5,Math.round(usual*0.5))){tipo="warn";txt=`Vas ${deficit} puntos detrás del plan. Para recuperarlo necesitas ${perDay} puntos por sesión hasta el ${short(V.entrega)}; normalmente haces ${usual}. Súmale ${Math.max(5,Math.round(extra/5)*5)} puntos a cada sesión y llegas.`;}
+  else{tipo="bad";txt=`Vas ${deficit} puntos detrás del plan. Te faltan ${Math.round(rest)} puntos y quedan ${left} ${left===1?"sesión":"sesiones"}: serían ${perDay} por sesión y normalmente haces ${usual}. Habla con Manuel hoy: mover la entrega al ${nice(fin)} o recortar Refinar antes que estirar las sesiones.`;}
+  return{deficit,rest,left,perDay,usual,extra,fin,txt,tipo}}
+const trackHTML=(T)=>T&&T.txt?`<div class="msg ${T.tipo==="ok"?"ok":T.tipo}" style="font-weight:500;line-height:1.4"><b>${T.tipo==="ok"?"En ruta":"Para volver al plan"}:</b> ${esc(T.txt)}</div>`:"";
 const stepsHTML=(S,extra)=>S.steps.map((s,i)=>`<div class="step"><i style="background:${FC(s.f)}">${i+1}</i><div><b>${s.to>=100?"Termina "+SHORT[s.f]:SHORT[s.f]+" hasta "+s.to+"%"}</b> (${s.from}% → ${s.to>=100?"lista":s.to+"%"}). Unas ${fmtH(s.pts/S.ritmo)} a tu ritmo.</div></div>`).join("")
   +(S.nextF?`<div class="step"><i style="background:#c9c9c3">–</i><div class="mu">No abras ${SHORT[S.nextF.fase]} todavía${extra?". "+esc(extra):""}.</div></div>`:(extra?`<div class="step"><i style="background:#c9c9c3">!</i><div class="mu">${esc(extra)}</div></div>`:""));
 function stackHTML(fs,marker,ghostTo){let w=0;let h=FASES.map(f=>{const x=f.peso*(fs[f.fase]||0)/100;w+=x;return x>0?`<i style="width:${x}%;background:${FC(f.fase)}"></i>`:""}).join("");
@@ -364,13 +380,14 @@ $("btnBackB").onclick=()=>{renderA();setState("A")};
 // ---- A
 function renderA(){const t=todayPR(),d=fromKey(t);$("aDate").textContent=DIAS[d.getDay()]+" "+d.getDate()+" "+MES[d.getMonth()]+" · día "+Math.max(1,Math.round((d-fromKey(PLAN[0]?.inicio||t))/864e5)+1)+" de 60";
   const cur=currentVideo();if(!$("video").options.length){const g=tp=>PLAN.filter(p=>p.tipo===tp).map(p=>`<option value="${p.video}">${esc(p.nombre)}</option>`).join("");$("video").innerHTML=`<optgroup label="Entretenimiento">${g("ent")}</optgroup><optgroup label="Documentación">${g("doc")}</optgroup>`;$("video").value=cur?cur.video:"ent1"}
-  onVideoA();const lr=latestReply();$("aReply").innerHTML=lr?replyHTML(lr.r,"respondió "+nice(lr.r.created_at.slice(0,10))):"";
+  onVideoA();onVideoATrack();const lr=latestReply();$("aReply").innerHTML=lr?replyHTML(lr.r,"respondió "+nice(lr.r.created_at.slice(0,10))):"";
 }
 function onVideoA(){const v=$("video").value,V=M.vids.find(x=>x.video===v);const last=V&&V.last;const meta=last?metaFor(last):null;const prog=V?V.prog:0;const exp=V?expectedPct(V,todayPR()):null;
   const[c,txt]=V?statusFor(prog,exp):["na",""];$("aVidChip").className="chip "+c;$("aVidChip").textContent=(Math.round(prog))+"%"+(txt?" · "+txt:"");
   if(meta!=null){$("aMetaPct").textContent=meta+"%";$("aMetaTxt").textContent=`Vas en ${Math.round(prog)}%. Para llegar faltan ${Math.max(0,Math.round(meta-prog))} puntos${M.ritmo?`, unas ${fmtH(Math.max(0,meta-prog)/M.ritmo)} a tu ritmo`:""}.`;$("aMetaBar").innerHTML=stackHTML(V.fases||{},meta,meta)}
   else{const S=V?suggest(V,prog,V.fases||{},todayPR()):null;$("aMetaPct").textContent=S?S.target+"%":"—";$("aMetaTxt").textContent=S?`No pusiste meta la vez pasada. Para ir al día hoy, cierra en ${S.target}%.`:"";$("aMetaBar").innerHTML=V?stackHTML(V.fases||{},S?S.target:null,S?S.target:null):""}}
-$("video").onchange=()=>{onVideoA()};
+function onVideoATrack(){const V=M.vids.find(x=>x.video===$("video").value);$("aTrack").innerHTML=V&&V.n>0?trackHTML(track(V,V.prog)):""}
+$("video").onchange=()=>{onVideoA();onVideoATrack()};
 // ---- C
 let cVideo=null, cMeta=null, cBase={};
 function renderC(){cVideo=$("video").value||currentVideo().video;const V=M.vids.find(x=>x.video===cVideo);cBase=(V&&V.fases)?{...V.fases}:{};fasesSel={};FASES.forEach(f=>fasesSel[f.fase]=cBase[f.fase]||0);
@@ -425,6 +442,7 @@ function renderD(){const L=lastSent,S=SUG,V=M.vids.find(x=>x.video===L.video);co
   $("dSugPct").textContent=S.target+"%";$("dSugTxt").textContent=S.ahead?`para mantener tu ritmo (el plan de ${short(nd)} marca ${S.exp}%)`:`es donde deberías cerrar para ir al día con la entrega del ${short(V.entrega)}`;
   $("dBar").innerHTML=stackHTML(L.fases,S.target,S.target);
   const lr=latestReply();$("dSteps").innerHTML=stepsHTML(S,null)||`<div class="step"><i style="background:${FC(1)}">✓</i><div>Este video está completo. El siguiente arranca según el calendario.</div></div>`;
+  $("dTrack").innerHTML=trackHTML(track(V,L.prog,nd));
   $("dTiles").innerHTML=`<div class="tile"><span class="k">de trabajo</span><b>~${fmtH(S.hours)}</b></div><div class="tile"><span class="k">a sumar</span><b>${S.pts} pts</b></div><div class="tile"><span class="k">tu ritmo (7 días)</span><b>${num(S.ritmo,1)} pts/h</b></div>`;
   const m=$("meta");m.min=r5(L.prog);m.value=S.target;$("metaV").textContent=S.target+"%";$("metaLo").textContent=Math.round(L.prog)+"% hoy";$("metaSug").textContent="sugerido "+S.target+"%"}
 $("meta").oninput=()=>{$("metaV").textContent=$("meta").value+"%"};
@@ -440,7 +458,7 @@ function renderProject(){const R=M.rows,t=todayPR();const cur=currentVideo();
     :`<div class="k">Última sesión${lastR?" · "+nice(lastR.fecha):""}</div>${lastR?`<div class="row" style="align-items:baseline;gap:8px"><span class="big">+${Math.round(lastR.adv)}</span><span class="mu">puntos en ${fmtH(lastR.h)}</span></div><div class="mu">${esc(lastR.logro)}</div>`:'<div class="mu">Todavía no hay check-ins.</div>'}`
     +`<div class="tiles"><div class="tile"><span class="k">Racha</span><b>${n} ${n===1?"día":"días"}</b></div><div class="tile"><span class="k">Semana</span><b>${Math.round(wp.reduce((a,b)=>a+b,0))} pts</b></div><div class="tile"><span class="k">Horas</span><b>${fmtH(wh.reduce((a,b)=>a+b,0))}</b></div></div>`;
   if(cur){const[c,txt]=statusFor(cur.prog,cur.exp);const diff=Math.round(cur.prog-cur.exp);const rest=100-cur.prog;
-    $("pVideo").innerHTML=`<div class="row between"><h2>${esc(cur.nombre)}</h2><span class="chip ${c}">${txt}${cur.prog<100&&diff!==0?" · "+(diff>0?"+":"")+diff+" vs. plan":""}</span></div><div class="row" style="align-items:baseline;gap:6px"><span class="med">${Math.round(cur.prog)}%</span><span class="mu">· el plan de hoy marca ${Math.round(cur.exp)}%</span></div><div class="stack">${stackHTML(cur.fases||{},cur.exp,null)}</div><div class="row between mu" style="font-size:12px"><span>Entrega ${nice(cur.entrega)} · faltan ${Math.round(rest)} pts</span><span>${M.ritmo?"a tu ritmo: ~"+fmtH(rest/M.ritmo):""}</span></div>`}
+    $("pVideo").innerHTML=`<div class="row between"><h2>${esc(cur.nombre)}</h2><span class="chip ${c}">${txt}${cur.prog<100&&diff!==0?" · "+(diff>0?"+":"")+diff+" vs. plan":""}</span></div><div class="row" style="align-items:baseline;gap:6px"><span class="med">${Math.round(cur.prog)}%</span><span class="mu">· el plan de hoy marca ${Math.round(cur.exp)}%</span></div><div class="stack">${stackHTML(cur.fases||{},cur.exp,null)}</div><div class="row between mu" style="font-size:12px"><span>Entrega ${nice(cur.entrega)} · faltan ${Math.round(rest)} pts</span><span>${M.ritmo?"a tu ritmo: ~"+fmtH(rest/M.ritmo):""}</span></div>${cur.n>0?trackHTML(track(cur,cur.prog)):""}`}
   $("pBars").innerHTML=wp.map((p,i)=>`<div class="${wk[i]===t?"t":p===0?"z":""}" style="height:${best>0?Math.max(2,p/best*100):2}%"></div>`).join("");
   $("pDow").innerHTML=wk.map((k,i)=>`<div style="${k===t?"color:var(--accent)":""}">${DL[fromKey(k).getDay()]}<b style="${wp[i]===0&&isWork(k)&&k<t?"color:var(--bad)":""}">${k>t?"–":Math.round(wp[i])}</b></div>`).join("");
   const first=R.length?R[0].fecha:t;const zeros=wk.filter((k,i)=>k<t&&k>=first&&isWork(k)&&wp[i]===0).length;$("pWeekTxt").textContent=zeros?`${zeros===1?"Hubo un día":"Hubo "+zeros+" días"} sin check-in. Uno solo no rompe nada; dos seguidos sí avisan.`:"Toda la semana con check-in.";
